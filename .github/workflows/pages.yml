@@ -31,16 +31,27 @@ jobs:
           from pathlib import Path
           import base64
           import gzip
+          import hashlib
           import shutil
 
-          parts = sorted(Path('site/chunks').glob('part*.txt'))
-          if not parts:
-              raise SystemExit('No packaged game chunks found')
+          repair_parts = sorted(Path('site/fix00').glob('part*.txt'))
+          if len(repair_parts) != 4:
+              raise SystemExit(f'Expected 4 repaired part00 segments, found {len(repair_parts)}')
 
-          packed = ''.join(p.read_text(encoding='utf-8').strip() for p in parts)
-          html = gzip.decompress(base64.b64decode(packed))
+          part0 = ''.join(p.read_text(encoding='utf-8').strip() for p in repair_parts)
+          if len(part0) != 20000:
+              raise SystemExit(f'Repaired part00 length mismatch: {len(part0)}')
+
+          part1 = Path('site/chunks/part01.txt').read_text(encoding='utf-8').strip()
+          part2 = Path('site/chunks/part02.txt').read_text(encoding='utf-8').strip()
+          packed = part0 + part1 + part2
+
+          compressed = base64.b64decode(packed, validate=True)
+          html = gzip.decompress(compressed)
           if b'<!doctype html>' not in html[:200].lower():
               raise SystemExit('Decoded game does not look like HTML')
+          if len(html) != 121384:
+              raise SystemExit(f'Unexpected standalone HTML size: {len(html)}')
 
           out = Path('_site')
           if out.exists():
@@ -52,7 +63,7 @@ jobs:
               shutil.copy2(name, out / name)
           shutil.copytree('assets', out / 'assets')
 
-          print('Pages build:', len(html), 'bytes from', len(parts), 'chunks')
+          print('Pages build: 121384 bytes; sha256=' + hashlib.sha256(html).hexdigest())
           PY
 
       - name: Configure Pages
