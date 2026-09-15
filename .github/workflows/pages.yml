@@ -23,14 +23,48 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Rebuild standalone game for Pages
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          import gzip
+          import shutil
+
+          parts = sorted(Path('site/chunks').glob('part*.txt'))
+          if not parts:
+              raise SystemExit('No packaged game chunks found')
+
+          packed = ''.join(p.read_text(encoding='utf-8').strip() for p in parts)
+          html = gzip.decompress(base64.b64decode(packed))
+          if b'<!doctype html>' not in html[:200].lower():
+              raise SystemExit('Decoded game does not look like HTML')
+
+          out = Path('_site')
+          if out.exists():
+              shutil.rmtree(out)
+          out.mkdir()
+          (out / 'index.html').write_bytes(html)
+
+          for name in ('manifest.webmanifest', 'service-worker.js'):
+              shutil.copy2(name, out / name)
+          shutil.copytree('assets', out / 'assets')
+
+          print('Pages build:', len(html), 'bytes from', len(parts), 'chunks')
+          PY
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
         with:
           enablement: true
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: '_site'
+
       - name: Deploy to Pages
         id: deployment
         uses: actions/deploy-pages@v4
